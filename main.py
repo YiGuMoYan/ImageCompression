@@ -10,31 +10,31 @@ import gradio
 import matplotlib.pyplot as plt
 
 
-def RGB2YUV(r, g, b):
+def RGB2YCbCr(r, g, b):
     """
     RGB 通道改为 YUV 通道
     :param r: R
     :param g: G
     :param b: B
-    :return: YUV
+    :return: YCbCr
     """
     y = 0.299 * r + 0.587 * g + 0.114 * b
-    u = -0.1687 * r - 0.3313 * g + 0.5 * b + 128
-    v = 0.5 * r - 0.419 * g - 0.081 * b + 128
-    return y, u, v
+    cb = -0.1687 * r - 0.3313 * g + 0.5 * b + 128
+    cr = 0.5 * r - 0.419 * g - 0.081 * b + 128
+    return y, cb, cr
 
 
-def YUV2RGB(y, u, v):
+def YCbCr2RGB(y, cb, cr):
     """
     YUV 通道改为 RGB 通道
     :param y: Y
-    :param u: U
-    :param v: V
+    :param cb: U
+    :param cr: V
     :return:
     """
-    r = y + 1.402 * (v - 128)
-    g = y - 0.34414 * (u - 128) - 0.71414 * (v - 128)
-    b = y + 1.772 * (u - 128)
+    r = y + 1.402 * (cr - 128)
+    g = y - 0.34414 * (cb - 128) - 0.71414 * (cr - 128)
+    b = y + 1.772 * (cb - 128)
     return r, g, b
 
 
@@ -66,7 +66,7 @@ def quantizationUV(raw, quality):
     :param quality: 质量
     :return:
     """
-    qUV = numpy.array([
+    qCbCr = numpy.array([
         [17, 18, 24, 47, 99, 99, 99, 99],
         [18, 21, 26, 66, 99, 99, 99, 99],
         [24, 26, 56, 99, 99, 99, 99, 99],
@@ -76,8 +76,8 @@ def quantizationUV(raw, quality):
         [99, 99, 99, 99, 99, 99, 99, 99],
         [99, 99, 99, 99, 99, 99, 99, 99],
     ])
-    qUV = setQuantization(qUV, quality)
-    return numpy.round(raw / qUV) * qUV
+    qCbCr = setQuantization(qCbCr, quality)
+    return numpy.round(raw / qCbCr) * qCbCr
 
 
 def setQuantization(q, quality):
@@ -215,25 +215,23 @@ class ImageCompression:
         """
         if self.__channel == 3:
             r, g, b = self.__rawNumpy[:, :, 0], self.__rawNumpy[:, :, 1], self.__rawNumpy[:, :, 2]
-            y, u, v = RGB2YUV(r, g, b)
+            y, cb, cr = RGB2YCbCr(r, g, b)
             yList = self.encode(y, 0)
-            uList = self.encode(u, 1)
-            vList = self.encode(v, 1)
+            cbList = self.encode(cb, 1)
+            crList = self.encode(cr, 1)
             y = self.mergeNumpy(yList)
-            u = self.mergeNumpy(uList)
-            v = self.mergeNumpy(vList)
-            r, g, b = YUV2RGB(y, u, v)
+            cb = self.mergeNumpy(cbList)
+            cr = self.mergeNumpy(crList)
+            r, g, b = YCbCr2RGB(y, cb, cr)
             r = Image.fromarray(self.splitNumpy(r)).convert('L')
             g = Image.fromarray(self.splitNumpy(g)).convert('L')
             b = Image.fromarray(self.splitNumpy(b)).convert('L')
             self.resImage = Image.merge("RGB", (r, g, b))
-            # resImage.save("1-1.jpg")
         elif self.__channel == 1:
             y = self.__rawNumpy[:, :, ]
             yList = self.encode(y, 0)
             y = self.mergeNumpy(yList)
             self.resImage = Image.fromarray(y).convert("L")
-            # resImage.save("1-1.jpg")
 
 
 def main(image, quality, customization):
@@ -244,6 +242,10 @@ def main(image, quality, customization):
     :param customization: 自定义压缩比例
     :return: 压缩后的图像 对比图 压缩比
     """
+
+    # 防止 clear 后填入空数据
+    if customization is None:
+        customization = 0
 
     # 创建对应结果文件夹
     name = str(uuid.uuid1())
@@ -281,12 +283,13 @@ def main(image, quality, customization):
     f.savefig("./resImage/" + name + "/plt.jpg", dpi=600)
     f.clear()
 
-    return image.resImage, Image.open("./resImage/" + name + "/plt.jpg"), "compression ratio = " + str(
+    return image.resImage, Image.open("./resImage/" + name + "/plt.jpg"), str(
         resSize.st_size / rawSize.st_size)
 
 
 if __name__ == "__main__":
-    gr = gradio.Interface(fn=main, inputs=[gradio.Image(label="raw"), gradio.Slider(0, 5), gradio.Number()],
-                          outputs=[gradio.Image(label="result"), gradio.Image(label="plot"), gradio.Text(label="compression ratio")])
+    gr = gradio.Interface(fn=main, inputs=[gradio.Image(label="raw"), gradio.Slider(1, 5), gradio.Number(value=0)],
+                          outputs=[gradio.Image(label="result"), gradio.Image(label="plot"),
+                                   gradio.Text(label="compression ratio")])
     gr.title = "ImageCompression - JPEG"
     gr.launch()
